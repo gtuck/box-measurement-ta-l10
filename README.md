@@ -21,7 +21,7 @@ A Python application to calibrate your Tau LiDAR Camera TA-L10 and measure shipp
 1. **Clone the repository**
 
    ```bash
-   git clone https://github.com/your-username/box-measurement-ta-l10.git
+   git clone https://github.com/gtuck/box-measurement-ta-l10.git
    cd box-measurement-ta-l10
    ```
 
