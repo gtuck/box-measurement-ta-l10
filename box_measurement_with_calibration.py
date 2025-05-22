@@ -1,6 +1,6 @@
 import numpy as np
 import cv2
-import tau_lidar_camera as tau # type: ignore
+import TauLidarCamera as tau # type: ignore
 import open3d as o3d
 import argparse # Added for command-line arguments
 import os       # Added for path operations
