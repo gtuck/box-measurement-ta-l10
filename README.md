@@ -1,6 +1,6 @@
 # Box Measurement TA-L10
 
-A Python application to calibrate your Tau LiDAR Camera TA-L10 and measure shipping-box dimensions with millimeter accuracy. This version includes improved command-line handling and saving/loading of calibration data.
+A Python application to calibrate your Tau LiDAR Camera TA-L10 and measure shipping-box dimensions with millimeter accuracy. This version features enhanced command-line handling and improved saving and loading of calibration data.
 
 ## Features
 
@@ -31,7 +31,7 @@ A Python application to calibrate your Tau LiDAR Camera TA-L10 and measure shipp
 1. **Clone the repository** (if you haven't already)
 
 
-git clone https://github.com/gtuck/box-measurement-ta-l10.git Or your fork/local copy
+git clone https://github.com/gtuck/box-measurement-ta-l10.git # Or your fork/local copy
 cd box-measurement-ta-l10
 
 
@@ -49,23 +49,32 @@ venv\Scripts\activate
 
 3. **Install dependencies**
 
+First, ensure `pip` is up-to-date:
+
 
 pip install --upgrade pip
+
+
+Then, install the project requirements. Ensure your `requirements.txt` file lists the correct package name for the Tau LiDAR Camera, which is `TauLidarCamera`.
+
+
 pip install -r requirements.txt
 
 
-The `requirements.txt` should include:
+Your `requirements.txt` should look like this:
 
 
-tau-lidar-camera
-open3d
 numpy
 opencv-python
+TauLidarCamera
+open3d
 
+
+If your `requirements.txt` has a different name for the Tau camera package (e.g., `tau-lidar-camera`), please update it to `TauLidarCamera` or ensure it matches the correct installable package name.
 
 ## Usage
 
-The main script for this project is `improved_box_measurement.py`. If you have renamed this file, please use your custom name in the example commands below. The script utilizes command-line arguments to specify different actions such as calibration or measurement.
+The main script for this project is `improved_box_measurement.py` (or `box_measurement_calib_updated.py` as per the latest code updates). If you have renamed this file, please use your custom name in the example commands below. The script utilizes command-line arguments to specify different actions, including calibration and measurement.
 
 **General Help:**
 
@@ -83,11 +92,13 @@ python improved_box_measurement.py calibrate_intrinsics --output camera_intrinsi
 
 * `--output`: File to save intrinsic parameters (default: `camera_intrinsics.npz`).
 
-* `--dims`: Inner corners of the checkerboard (cols,rows, default: "7,6").
+* `--dims`: Inner corners of the checkerboard (cols, rows, default: "7,6").
 
 * `--size`: Size of a checkerboard square in meters (default: 0.025).
 
 * `--frames`: Number of frames to capture (default: 20).
+
+* `--port`: (Optional) Specify the serial port of the Tau LiDAR camera. If not provided, the script will scan for available cameras.
 
 * Follow on-screen instructions: displays a live grayscale feed. Press 'c' to capture when the checkerboard is detected. Collect frames by moving the board.
 
@@ -105,6 +116,8 @@ python improved_box_measurement.py calibrate_depth --output depth_scale.json --d
 
 * `--samples`: Number of depth samples to take (default: 50).
 
+* `--port`: (Optional) Specify the serial port of the Tau LiDAR camera.
+
 * Follow on-screen instructions: point the camera at a flat surface exactly at the specified `--distance`. Press 's' to start sampling.
 
 ### 3. Measuring Boxes
@@ -118,6 +131,8 @@ python improved_box_measurement.py measure --intrinsics camera_intrinsics.npz --
 * `--intrinsics`: Path to the saved intrinsic calibration file (default: `camera_intrinsics.npz`).
 
 * `--depth_scale`: Path to the saved depth scale file (default: `depth_scale.json`).
+
+* `--port`: (Optional) Specify the serial port of the Tau LiDAR camera.
 
 * You can also adjust point cloud processing parameters:
 
@@ -142,32 +157,36 @@ python improved_box_measurement.py full_run --intrinsics_output camera_intrinsic
 * This command accepts all parameters from `calibrate_intrinsics`, `calibrate_depth`, and `measure` (use `-h` for details). For example:
 
 
-python improved_box_measurement.py full_run --dims 7,6 --size 0.025 --frames 15 --known_distance 0.75 --samples 30 --plane_thresh 0.015
+python improved_box_measurement.py full_run --dims 7,6 --size 0.025 --frames 15 --known_distance 0.75 --samples 30 --plane_thresh 0.015 --port /dev/ttyUSB0
 
 
 ## Troubleshooting & Tips
 
-* **Camera Connection**: Ensure the Tau LiDAR camera is properly connected before running the script. If you see "Error initializing Tau Camera", check the USB connection and drivers.
+* **Package Installation**: If you encounter an error, such as 'No matching distribution found for TauLidarCamera' when running 'pip install -r requirements.txt', double-check the package name in your `requirements.txt` file. It should be `TauLidarCamera` (case-sensitive). If issues persist, the package might require a specific Python version, OS, or an alternative installation method (check the package's official documentation or the Tau LiDAR camera manufacturer's website). Also, ensure `TauLidarCommon` is installed, as it's often a dependency of `TauLidarCamera`.
+
+* **Camera Connection**: Ensure the Tau LiDAR camera is connected correctly before running the script. If you see "Error initializing Tau Camera" or "No Tau Camera devices found", check the USB connection, drivers, and if you need to specify the `--port` argument.
 
 * **Lighting**: Use even, diffuse light for intrinsic calibration to improve checkerboard corner detection.
 
-* **Stability**: Keep the camera and targets (checkerboard, flat surface) steady during captures.
+* **Stability**: Keep the camera and targets (such as a checkerboard or flat surface) steady during captures.
 
 * **Clutter**: A clean, uncluttered tabletop or background yields better segmentation for box measurement.
 
 * **Calibration Accuracy**:
 
-* For intrinsic calibration, a low reprojection error (printed at the end) indicates good calibration. If the error is high (>1.0 pixels), re-calibrate with more varied checkerboard poses.
+* For intrinsic calibration, a low reprojection error (printed at the end) indicates good calibration. If the error is high (>1.0 pixels), recalibrate with more varied checkerboard poses.
 
-* For depth scale calibration, a low standard deviation of scale samples (printed at the end) is desirable. If high, ensure the target surface is flat, static, and at the correct distance.
+* For depth scale calibration, a low standard deviation of scale samples (printed at the end) is desirable. If the target surface is high, ensure it is flat, static, and at the correct distance.
 
 * **Measurement Parameters**: If box measurement is not working well (e.g., not finding the box, or including parts of the table), try adjusting the following parameters for the `measure` command (or the equivalent parameters if using `full_run`):
 
-* `--plane_thresh`: If the table is not being removed properly, try slightly increasing or decreasing this value.
+* `--plane_thresh`: If the table is not being removed properly, try adjusting this value slightly to increase or decrease it.
 
 * `--cluster_eps`: If the box points are not being grouped together or too much noise is included, adjust this. Smaller values make clusters tighter.
 
-* `--cluster_min_points`: Minimum points to form a cluster. If your box is small or far away, you might need to decrease this.
+* `--cluster_min_points`: Minimum points to form a cluster. If your box is small or located far away, you may need to decrease this setting.
+
+* **Frame Data Issues**: If the script has trouble reading frames (e.g., "Failed to read frame" or errors in `get_frame_data`), it might be due to incorrect `FrameType` assumptions or how frame data (width, height, buffer) is accessed. Consult the TauLidarCamera SDK documentation for the correct `FrameType`s (e.g., `GRAYSCALE`, `AMPLITUDE`, `DISTANCE`) and how to interpret their frame objects correctly.
 
 ## Contributing
 
