@@ -1,4 +1,4 @@
-tau-lidar-camera
+TauLidarCamera
 open3d
 numpy
 opencv-python
