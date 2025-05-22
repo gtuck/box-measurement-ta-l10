@@ -1,7 +1,7 @@
 import numpy as np
 import cv2
-from TauLidarCamera.camera import Camera # Changed import
-from TauLidarCommon.frame import FrameType # Added import
+from TauLidarCamera.camera import Camera 
+from TauLidarCommon.frame import FrameType 
 import open3d as o3d
 import argparse
 import os
@@ -31,28 +31,25 @@ def setup_camera(port_arg=None):
         if not ports:
             print("No Tau Camera devices found. Please check connection.")
             return None
-        # Try connecting to the first available port if multiple are found
         selected_port = ports[0] 
         print(f"Attempting to connect to the first available device on port '{selected_port}'")
     else:
         print(f"Attempting to connect to device on specified port '{selected_port}'")
 
     try:
-        # Camera.setRange(0, 4500) # For depth coloring, not strictly needed for raw data
         camera = Camera.open(selected_port)
         if camera:
-            # Configure camera - these are example values from the sample
-            # Adjust if necessary for your specific camera model or conditions
-            camera.setModulationChannel(0)      # Auto channel selection often preferred if available
-            camera.setIntegrationTime3d(0, 1000) # Integration time for 3D mode
-            camera.setMinimalAmplitude(0, 10)   # Minimal amplitude for valid points
+            # Default configurations, adjust if needed
+            camera.setModulationChannel(0)      
+            camera.setIntegrationTime3d(0, 1000) 
+            camera.setMinimalAmplitude(0, 10)   
 
             camera_info = camera.info()
             print("\nToF camera opened successfully:")
             print(f"    model:      {camera_info.model}")
             print(f"    firmware:   {camera_info.firmware}")
             print(f"    uid:        {camera_info.uid}")
-            print(f"    resolution: {camera_info.resolution}") # e.g., "240x160"
+            print(f"    resolution: {camera_info.resolution}") 
             print(f"    port:       {camera_info.port}")
             return camera
         else:
@@ -62,46 +59,71 @@ def setup_camera(port_arg=None):
         print(f"Error during camera setup on port '{selected_port}': {e}")
         return None
 
-def get_frame_data(camera_obj, frame_type_to_read, expected_dtype=np.uint8, channels=1):
+def get_intensity_image(camera_obj):
     """
-    Reads a specific frame type from the camera and returns it as a NumPy array.
+    Reads an intensity (grayscale) image from the camera.
+    Uses FrameType.DISTANCE_GRAYSCALE and processes frame.data_grayscale.
     """
+    if not camera_obj: return None
     try:
-        frame = camera_obj.readFrame(frame_type_to_read)
-        if frame:
-            # The actual data might be in frame.data, frame.data_depth, etc.
-            # This needs to be verified against the TauLidarCamera SDK documentation
-            # For FrameType.DISTANCE, data is often 16-bit. For GRAYSCALE/AMPLITUDE, 8-bit.
+        print("Attempting to read FrameType.DISTANCE_GRAYSCALE for intensity data...")
+        frame = camera_obj.readFrame(FrameType.DISTANCE_GRAYSCALE)
+        if frame and hasattr(frame, 'data_grayscale'):
+            res_str = camera_obj.info().resolution 
+            frame_width, frame_height = map(int, res_str.split('x'))
             
-            # Assuming frame.data holds the raw pixel data buffer
-            data_buffer = frame.data 
+            # data_grayscale is uint16, needs conversion to uint8 for cv2.findChessboardCorners
+            mat_grayscale_uint16 = np.frombuffer(frame.data_grayscale, dtype=np.uint16, count=-1, offset=0).reshape(frame_height, frame_width)
             
-            # Calculate expected number of elements
-            # Frame width and height might need to be obtained from camera_obj.info() or frame object itself
-            # Example: frame_width, frame_height = map(int, camera_obj.info().resolution.split('x'))
-            
-            # For now, let's assume frame object has width and height attributes
-            if not hasattr(frame, 'width') or not hasattr(frame, 'height'):
-                 # Fallback if frame object doesn't have width/height directly
-                 # This part is crucial and might need adjustment based on actual SDK
-                res_str = camera_obj.info().resolution 
-                frame_width, frame_height = map(int, res_str.split('x'))
-                # print(f"Using resolution from info: {frame_width}x{frame_height} for {frame_type_to_read}")
+            # Normalize and convert to uint8
+            if np.max(mat_grayscale_uint16) > 0: # Avoid division by zero if image is all black
+                 mat_grayscale_normalized = (mat_grayscale_uint16 / np.max(mat_grayscale_uint16) * 255)
             else:
-                frame_width, frame_height = frame.width, frame.height
-                # print(f"Using resolution from frame: {frame_width}x{frame_height} for {frame_type_to_read}")
+                 mat_grayscale_normalized = mat_grayscale_uint16 # Already zeros
+            
+            mat_grayscale_uint8 = mat_grayscale_normalized.astype(np.uint8)
 
-
-            if channels == 1:
-                image_data = np.frombuffer(data_buffer, dtype=expected_dtype, count=-1, offset=0).reshape(frame_height, frame_width)
-            else: # Assuming 3 channels for RGB-like data if needed
-                image_data = np.frombuffer(data_buffer, dtype=expected_dtype, count=-1, offset=0).reshape(frame_height, frame_width, channels)
-            return image_data
+            return mat_grayscale_uint8
         else:
-            print(f"Failed to read {frame_type_to_read} frame.")
+            if frame is None:
+                print("Failed to read DISTANCE_GRAYSCALE frame (frame object is None).")
+            else:
+                print("DISTANCE_GRAYSCALE frame read, but 'data_grayscale' attribute is missing.")
             return None
+    except AttributeError as ae:
+        print(f"Error: FrameType 'DISTANCE_GRAYSCALE' may not be valid or an attribute is missing. {ae}")
+        return None
     except Exception as e:
-        print(f"Error reading {frame_type_to_read} frame: {e}")
+        print(f"Error reading or processing intensity frame: {e}")
+        return None
+
+def get_raw_depth_image(camera_obj):
+    """
+    Reads a raw depth image from the camera.
+    Uses FrameType.DISTANCE and processes frame.data.
+    """
+    if not camera_obj: return None
+    try:
+        print("Attempting to read FrameType.DISTANCE for raw depth data...")
+        frame = camera_obj.readFrame(FrameType.DISTANCE)
+        if frame and hasattr(frame, 'data'):
+            res_str = camera_obj.info().resolution 
+            frame_width, frame_height = map(int, res_str.split('x'))
+            
+            # Assuming frame.data for FrameType.DISTANCE is raw 16-bit depth
+            raw_depth_uint16 = np.frombuffer(frame.data, dtype=np.uint16, count=-1, offset=0).reshape(frame_height, frame_width)
+            return raw_depth_uint16
+        else:
+            if frame is None:
+                print("Failed to read DISTANCE frame (frame object is None).")
+            else:
+                print("DISTANCE frame read, but 'data' attribute is missing or frame is invalid.")
+            return None
+    except AttributeError as ae:
+        print(f"Error: FrameType 'DISTANCE' may not be valid or an attribute is missing. {ae}")
+        return None
+    except Exception as e:
+        print(f"Error reading or processing raw depth frame: {e}")
         return None
 
 # ----------------------------------
@@ -113,8 +135,6 @@ def calibrate_intrinsics(camera_obj, output_file, checkerboard_dims=(7, 6), squa
         return None, None
         
     print(f"Starting intrinsic calibration. Looking for {checkerboard_dims} inner corners.")
-    print(f"Ensure your checkerboard squares are {square_size*1000} mm.")
-    print(f"Move the checkerboard to {num_frames} different positions and orientations.")
 
     objp = np.zeros((checkerboard_dims[1] * checkerboard_dims[0], 3), np.float32)
     objp[:, :2] = np.mgrid[0:checkerboard_dims[0], 0:checkerboard_dims[1]].T.reshape(-1, 2)
@@ -128,18 +148,17 @@ def calibrate_intrinsics(camera_obj, output_file, checkerboard_dims=(7, 6), squa
     last_gray_shape = None
 
     while collected < num_frames:
-        # Try FrameType.GRAYSCALE first, then FrameType.AMPLITUDE as a fallback for intensity image
-        gray = get_frame_data(camera_obj, FrameType.GRAYSCALE, np.uint8)
-        if gray is None:
-            print("Trying FrameType.AMPLITUDE for grayscale data...")
-            gray = get_frame_data(camera_obj, FrameType.AMPLITUDE, np.uint8) # Common for ToF
+        gray = get_intensity_image(camera_obj) 
 
         if gray is None:
-            print("Failed to read grayscale/amplitude frame from camera. Check connection or frame types.")
-            cv2.waitKey(100) 
-            continue
+            print("Failed to get intensity image for checkerboard detection.")
+            key = cv2.waitKey(100) & 0xFF 
+            if key == ord('q'):
+                print("Quitting calibration due to frame reading issues.")
+                break
+            continue 
         
-        last_gray_shape = gray.shape # Store shape for calibrateCamera
+        last_gray_shape = gray.shape 
 
         display_img = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
         found, corners = cv2.findChessboardCorners(gray, checkerboard_dims, None)
@@ -187,9 +206,8 @@ def calibrate_intrinsics(camera_obj, output_file, checkerboard_dims=(7, 6), squa
         
     print("Calibrating camera...")
     try:
-        # Use shape from the last successfully read gray image
         ret, mtx, dist, rvecs, tvecs = cv2.calibrateCamera(
-            objpoints, imgpoints, last_gray_shape[::-1], None, None # Use (width, height)
+            objpoints, imgpoints, last_gray_shape[::-1], None, None 
         )
     except cv2.error as e:
         print(f"OpenCV Error during calibration: {e}")
@@ -226,19 +244,19 @@ def calibrate_depth_scale(camera_obj, output_file, known_distance=1.0, num_sampl
         return None
 
     print(f"Starting depth scale calibration.")
-    print(f"Point the camera at a flat, static surface EXACTLY {known_distance:.2f} meters away.")
-    print(f"The central region of the camera's view will be sampled {num_samples} times.")
-    print("Press 's' to start sampling, or 'q' to quit.")
         
     scales = []
     cv2.namedWindow('Depth Scale Calibration - Depth Feed', cv2.WINDOW_NORMAL)
     sampling_started = False
 
     while True:
-        raw_depth = get_frame_data(camera_obj, FrameType.DISTANCE, np.uint16)
+        raw_depth = get_raw_depth_image(camera_obj) 
         if raw_depth is None:
-            print("Failed to read depth frame from camera.")
-            cv2.waitKey(100)
+            print("Failed to read depth frame from camera for depth calibration.")
+            key = cv2.waitKey(100) & 0xFF 
+            if key == ord('q'):
+                print("Quitting depth calibration due to frame reading issues.")
+                break
             continue
 
         depth_display_normalized = cv2.normalize(raw_depth, None, 0, 255, cv2.NORM_MINMAX, dtype=cv2.CV_8U)
@@ -256,9 +274,8 @@ def calibrate_depth_scale(camera_obj, output_file, known_distance=1.0, num_sampl
             cv2.putText(depth_display_color, f"Sampling... {len(scales)}/{num_samples}", 
                         (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
             if len(scales) < num_samples:
-                # Raw depth from ToF cameras is often in mm. Convert to meters.
                 depth_m_at_center = raw_depth[h//2-roi_size//2:h//2+roi_size//2, w//2-roi_size//2:w//2+roi_size//2].astype(np.float32) * 0.001
-                valid_depths = depth_m_at_center[depth_m_at_center > 0.1] # Ignore depths less than 10cm
+                valid_depths = depth_m_at_center[depth_m_at_center > 0.1] 
                 if valid_depths.size > 0:
                     measured_distance = np.median(valid_depths)
                     if measured_distance > 0: 
@@ -279,6 +296,7 @@ def calibrate_depth_scale(camera_obj, output_file, known_distance=1.0, num_sampl
 
         if key == ord('q'):
             print("Depth scale calibration quit by user.")
+            cv2.destroyAllWindows() 
             return None
         elif key == ord('s') and not sampling_started:
             print("Starting sampling...")
@@ -393,16 +411,13 @@ def cluster_and_fit_box(objects_pcd, eps=0.02, min_points=100):
     return obb
 
 def capture_frames_for_measurement(camera_obj):
-    """ Captures grayscale and raw depth frame for measurement. """
+    """ Captures intensity and raw depth frame for measurement. """
     if not camera_obj: return None, None
     
-    gray_image = get_frame_data(camera_obj, FrameType.GRAYSCALE, np.uint8)
-    if gray_image is None: # Fallback
-        gray_image = get_frame_data(camera_obj, FrameType.AMPLITUDE, np.uint8)
-
-    raw_depth_image = get_frame_data(camera_obj, FrameType.DISTANCE, np.uint16)
+    intensity_image = get_intensity_image(camera_obj)
+    raw_depth_image = get_raw_depth_image(camera_obj)
     
-    return gray_image, raw_depth_image
+    return intensity_image, raw_depth_image
 
 def measure_box_dimensions(camera_obj, mtx, dist, depth_scale_factor, 
                            plane_dist_thresh=0.01, cluster_eps=0.02, cluster_min_points=100):
@@ -414,13 +429,14 @@ def measure_box_dimensions(camera_obj, mtx, dist, depth_scale_factor,
         return
 
     print("Attempting to capture frame for measurement...")
-    gray, raw_depth = capture_frames_for_measurement(camera_obj) # Uses the new camera_obj
+    intensity_img, raw_depth = capture_frames_for_measurement(camera_obj) 
 
-    if raw_depth is None or gray is None: # Check both
-        print("Failed to capture frame(s) for measurement. Check camera.")
+    if raw_depth is None: 
+        print("Failed to capture critical depth frame for measurement. Check camera.")
         return
+    if intensity_img is None: 
+        print("Warning: Failed to capture intensity frame. Proceeding with depth data only for point cloud.")
 
-    # Raw depth from ToF cameras is often in mm. Convert to meters.
     depth_m = raw_depth.astype(np.float32) * 0.001 * depth_scale_factor
     
     print("Generating point cloud...")
@@ -512,7 +528,6 @@ def main():
 
     args = parser.parse_args()
 
-    # Set Open3D log level
     log_levels_map = {
         'DEBUG': o3d.utility.VerbosityLevel.Debug,
         'INFO': o3d.utility.VerbosityLevel.Info,
@@ -521,14 +536,13 @@ def main():
     }
     o3d.utility.set_verbosity_level(log_levels_map.get(args.log_level, o3d.utility.VerbosityLevel.Info))
 
-    camera = None # Initialize camera to None
+    camera = None 
 
-    # Setup camera once if any command needs it
     if args.command in ['calibrate_intrinsics', 'calibrate_depth', 'measure', 'full_run']:
         camera = setup_camera(args.port)
         if not camera:
             print("Failed to initialize camera. Exiting.")
-            return # Exit if camera setup fails
+            return 
 
     try:
         if args.command == 'calibrate_intrinsics':
