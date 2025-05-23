@@ -9,6 +9,9 @@ from measureBox import setup_camera, get_intensity_image, \
                        calibrate_depth_scale as measurebox_calibrate_depth_scale, \
                        measure_box_dimensions as measurebox_measure_box_dimensions
 
+# Minimal 1x1 transparent GIF
+icon_base64 = "R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw=="
+
 # --- Global State Variables ---
 camera = None
 intrinsics_active = False
@@ -182,8 +185,8 @@ depth_scale_tab_layout = [[sg.Text('Depth Scale File:'), sg.InputText(key='-DEPT
 measurement_tab_layout = [[sg.Text('Plane Threshold (m):'), sg.InputText(key='-PLANE_THRESH-', default_text='0.01', size=(10,1))],[sg.Text('Cluster Epsilon (m):'), sg.InputText(key='-CLUSTER_EPS-', default_text='0.02', size=(10,1))],[sg.Text('Cluster Min Points:'), sg.InputText(key='-CLUSTER_MIN_POINTS-', default_text='100', size=(5,1))]]
 param_tab_group = sg.TabGroup([[sg.Tab('Intrinsics Calib.', intrinsics_tab_layout, key='-TAB_INTRINSICS-')],[sg.Tab('Depth Scale Calib.', depth_scale_tab_layout, key='-TAB_DEPTH_SCALE-')],[sg.Tab('Measurement Params', measurement_tab_layout, key='-TAB_MEASUREMENT-')]])
 action_buttons_col = [[sg.Button("Calibrate Intrinsics", key='-CALIB_INTRINSICS-', disabled=True),sg.Button("Calibrate Depth Scale", key='-CALIB_DEPTH-', disabled=True),sg.Button("Measure Box", key='-MEASURE_BOX-', disabled=True),sg.Button("Full Run", key='-FULL_RUN-', disabled=True)]]
-layout = [[sg.Column(camera_col)],[sg.HSeparator()],[sg.Column(action_buttons_col)],[sg.HSeparator()],[sg.Column([[param_tab_group]]),sg.Image(key='-IMAGE-', size=(640, 480), background_color='black')],[sg.Text("Log Output:")],[sg.Multiline(key='-LOG-', size=(100, 20), autoscroll=True, reroute_stdout=False, reroute_stderr=False, font='monospace 8', do_not_clear=True)],[sg.Button('Quit', key='-QUIT-')]]
-window = sg.Window('Box Measurement TA-L10 GUI', layout, finalize=True)
+layout = [[sg.Column(camera_col)],[sg.HSeparator()],[sg.Column(action_buttons_col)],[sg.HSeparator()],[sg.Column([[param_tab_group]]),sg.Image(key='-IMAGE-', size=(640, 480), background_color='black', data=icon_base64)],[sg.Text("Log Output:")],[sg.Multiline(key='-LOG-', size=(100, 20), autoscroll=True, reroute_stdout=False, reroute_stderr=False, font='monospace 8', do_not_clear=True)],[sg.Button('Quit', key='-QUIT-')]]
+window = sg.Window('Box Measurement TA-L10 GUI', layout, icon=icon_base64, finalize=True)
 
 def update_buttons_for_process_status(is_starting_process):
     # Disable all main action buttons if a process is starting or active
